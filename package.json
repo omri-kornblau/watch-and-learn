@@ -1,0 +1,16 @@
+{
+  "name": "java-helper",
+  "version": "1.0.0",
+  "description": "",
+  "main": "run_java.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "chokidar": "^3.5.1",
+    "node-java": "^1.0.1",
+    "rimraf": "^3.0.2"
+  }
+}
