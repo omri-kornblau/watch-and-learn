@@ -1,8 +1,10 @@
 class Main {
     public static void main(String[] args) {
-        System.out.println("Hello JS");
-
+        System.out.print("Funny");
         A a = new A();
+        
+        //System.out.print("afaf");
+        
         B b = new B();
     }
 }

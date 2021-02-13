@@ -2,6 +2,7 @@ const ChildProcess = require("child_process")
 const Chokidar = require("chokidar")
 const Path = require("path")
 const Fs = require("fs").promises
+const EventEmitter = require("events").EventEmitter
 
 const promisify = require("util").promisify
 const rimraf = promisify(require("rimraf"))
@@ -10,37 +11,61 @@ const TEMP_OUTPUT_DIR = "./.java_build"
 const COMPILE_TIMEOUT = 10000
 const RUN_TIMEOUT = 60000
 
+const events = {
+  COMPILED: "compiled",
+  SPAWN_ERROR: "spawn_error",
+  COMPILATION_ERROR: "compilation_error",
+  DATA: "data",
+  RUNTIME_ERROR: "runtime_error",
+  COMPILING: "compiling",
+}
+
+const {
+  COMPILED,
+  SPAWN_ERROR,
+  COMPILATION_ERROR,
+  DATA,
+  RUNTIME_ERROR,
+  COMPILING
+} = events
+
 const spawnJavaCompile = (path, outputDir) => ChildProcess.spawn("javac.exe", [ "-d", outputDir, "-cp", TEMP_OUTPUT_DIR, path])
 const spawnJavaRun = (path) => ChildProcess.spawn("java.exe", ["-cp", TEMP_OUTPUT_DIR, "Main"])
 
-const compileDir = async (dir, outputDir=TEMP_OUTPUT_DIR, compileTimeoutLimit=COMPILE_TIMEOUT) => (
-  new Promise((resolve, reject) => {
-    let compileError = ""
+class Runner extends EventEmitter {
+  constructor() {
+    super()
+  }
 
-    const compileTimeout = setTimeout(resolve, compileTimeoutLimit)
+  compileDir = (dir, outputDir=TEMP_OUTPUT_DIR, compileTimeoutLimit=COMPILE_TIMEOUT) => {
+    this.emit(COMPILING)
+
+    const compileTimeout = setTimeout(() => this.emit(SPAWN_ERROR, new Error("Timeout")), compileTimeoutLimit)
 
     const javaCompileProcess = spawnJavaCompile(Path.resolve(dir, "*.java"), outputDir)
+
+    let compileError = ""
 
     javaCompileProcess
       .on("exit", () => {
         clearTimeout(compileTimeout)
 
-        if (!!compileError) return reject(new Error(`[COMPILATION_ERROR] \n${compileError.toString()}`))
-
         javaCompileProcess.removeAllListeners()
 
-        resolve()
+        if (!!compileError) return this.emit(COMPILATION_ERROR, new Error(compileError.toString()))
+
+        this.emit(COMPILED)
       })
-      .on("error", (error) => reject(new Error(`[SPAWN_ERROR] \n${error}`)))
+      .on("error", (error) => {
+        this.emit(SPAWN_ERROR, error)
+      })
 
     javaCompileProcess
       .stderr.on("data", (error) => compileError += error)
-  })
-)
+  } 
 
-const runDir = async (dir, runTimeoutLimit=RUN_TIMEOUT) => (
-  new Promise((resolve, reject) => {
-    const runTimeout = setTimeout(resolve, runTimeoutLimit)
+  runDir = (dir, runTimeoutLimit=RUN_TIMEOUT) => {
+    const runTimeout = setTimeout(() => this.emit(SPAWN_ERROR, new Error("Timeout"), runTimeoutLimit))
     const javaRunProcess = spawnJavaRun(dir)
 
     javaRunProcess
@@ -48,36 +73,21 @@ const runDir = async (dir, runTimeoutLimit=RUN_TIMEOUT) => (
         clearTimeout(runTimeout)
 
         javaRunProcess.removeAllListeners()
-
-        resolve()
       })
-      .on("error", (error) => reject(new Error(`[SPAWN_ERROR] \n${error}`)))
+      .on("error", (error) => this.emit(SPAWN_ERROR, error))
 
-    javaRunProcess.stderr.on("data", (error) => console.log(`[RUNTIME_ERROR]: \n${error.toString()}\n`))
-    javaRunProcess.stdout.on("data", (data) => console.log(`out: \n${data.toString()}\n`))
-  })
-)
-
-const onUpdate = (path) => (async () => {
-  console.log(`File update: ${path}`)
-
-  const fileDir = Path.parse(path).dir
-
-  await rimraf(TEMP_OUTPUT_DIR)
-
-  try { 
-    await compileDir(fileDir)
-
-    console.log(`Done compiling ${path}\n`)
-  } catch(err) {
-    console.log(err.toString())
-    return
+    javaRunProcess.stderr.on("data", (error) => this.emit(RUNTIME_ERROR, error))
+    javaRunProcess.stdout.on("data", (data) => this.emit(DATA, data.toString()))
   }
 
-  await runDir(fileDir)
-})()
+  compileAndRun = async (dir) => {
+    this.once(COMPILED, () => this.runDir(dir))
 
-const run = async (dir) => {
+    this.compileDir(dir)
+  }
+}
+
+const initWatcher = async (dir, callback) => {
   const filesInDir = await Fs.readdir(dir)
 
   await rimraf(TEMP_OUTPUT_DIR)
@@ -85,18 +95,17 @@ const run = async (dir) => {
 
   const filesPaths = filesInDir.map(file => Path.resolve(dir, file))
 
-  if (filesPaths.length > 0) {
-    onUpdate(filesPaths[0])
-  }
-
   const watchOptions = { 
     awaitWriteFinish: true,
     usePolling: true,
     interval: 1
   }
 
-  Chokidar.watch(filesPaths , watchOptions)
-    .on("change", onUpdate)
+  Chokidar.watch(filesPaths , watchOptions).on("change", callback)
 }
 
-run("./java_files")
+module.exports = {
+  initWatcher,
+  Runner,
+  events
+}

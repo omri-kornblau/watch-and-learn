@@ -1,0 +1,51 @@
+* {
+    margin: 0;
+    overflow: hidden;
+}
+
+#title-bar {
+    height: 20px; 
+    width: 100%; 
+    background-color: black; 
+    top: 0; 
+    left: 0; 
+    position: absolute;
+}
+
+#main {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+}
+
+#taskbar {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+}
+
+.indicator {
+    position: absolute;
+    background-color: rgb(31, 28, 28);
+    color: white;
+}
+
+#compilation-indicator {
+    right: 10px;
+    bottom: 0px;
+    width: 40px;
+    height: 30px;
+}
+
+#data-indicator {
+    right: 300px;
+    bottom: 0px;
+    width: 200px;
+    height: 30px;
+}
+
+.drag-title-bar {
+    -webkit-user-select: none;
+    -webkit-app-region: drag;
+}
